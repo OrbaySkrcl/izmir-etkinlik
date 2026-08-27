@@ -258,6 +258,41 @@ def list_events(
     console.print(table)
 
 
+@app.command("temizle")
+def purge(
+    all_events: bool = typer.Option(
+        False, "--hepsi", help="Tüm etkinlik kayıtlarını sil (yeniden taramaya hazırlan)"
+    ),
+    stale_days: int = typer.Option(
+        14, "--bayat-gun", help="Bu kadar gündür görülmeyen kayıtları sil"
+    ),
+    yes: bool = typer.Option(False, "--evet", "-y", help="Onay sorma"),
+) -> None:
+    """Bayat veya bozuk etkinlik kayıtlarını siler.
+
+    Ayrıştırma düzeltmelerinden sonra eski kayıtlar gelecek tarihli
+    oldukları için kendiliğinden düşmez; bu komut onları temizler.
+    """
+    _setup()
+    from .store import repo
+    from .store.db import init_db, session_scope
+
+    if all_events and not yes:
+        typer.confirm("Tüm etkinlik kayıtları silinecek. Emin misiniz?", abort=True)
+
+    async def _run() -> int:
+        await init_db()
+        async with session_scope() as session:
+            if all_events:
+                return await repo.delete_all_events(session)
+            return await repo.prune_stale_events(session, days=stale_days)
+
+    removed = asyncio.run(_run())
+    console.print(f"[green]{removed} kayıt silindi.[/green]")
+    if removed:
+        console.print("Yeniden doldurmak için: [cyan]izmir-etkinlik scrape --no-cache[/cyan]")
+
+
 @app.command("initdb")
 def initdb() -> None:
     """Veritabanı tablolarını oluşturur."""

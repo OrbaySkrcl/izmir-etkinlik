@@ -92,6 +92,29 @@ class TestScrapeCommand:
         assert "Eşleşen kaynak yok" in result.stdout
 
 
+class TestPurgeCommand:
+    @respx.mock
+    def test_purge_all_clears_database(self):
+        html = """<html><body><div class="etkinlik-item"><a href="/1"></a>
+            <h3 class="etkinlik-adi">Silinecek Konser</h3>
+            <span class="etkinlik-tarih">31 Aralık 2030</span></div></body></html>"""
+        respx.route(host__in=["kultursanat.izmir.bel.tr"]).mock(
+            return_value=httpx.Response(200, text=html)
+        )
+        runner.invoke(app, ["scrape", "--source", "kultursanat", "--no-cache"])
+        assert "Silinecek Konser" in runner.invoke(app, ["list", "--bucket", "ileride"]).stdout
+
+        result = runner.invoke(app, ["temizle", "--hepsi", "--evet"])
+        assert result.exit_code == 0
+        assert "1 kayıt silindi" in result.stdout
+        assert "Kayıt bulunamadı" in runner.invoke(app, ["list", "--bucket", "ileride"]).stdout
+
+    def test_stale_purge_keeps_fresh_records(self):
+        result = runner.invoke(app, ["temizle", "--bayat-gun", "14"])
+        assert result.exit_code == 0
+        assert "0 kayıt silindi" in result.stdout
+
+
 class TestDoctorCommand:
     def test_unknown_source_lists_valid_ones(self):
         result = runner.invoke(app, ["doctor", "--source", "yok"])

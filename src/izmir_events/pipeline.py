@@ -162,6 +162,11 @@ async def collect_and_store(
             removed = await repo.prune_old_events(session)
             if removed:
                 log.info("pruned_old_events", count=removed)
+            # Kaynaktan kalkmış veya ayrıştırma düzeldiği için kimliği değişmiş
+            # kayıtlar aksi halde gelecek tarihli oldukları için hiç silinmez.
+            stale = await repo.prune_stale_events(session, days=settings.prune_stale_days)
+            if stale:
+                log.info("pruned_stale_events", count=stale)
 
     log.info(
         "pipeline_done",

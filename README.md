@@ -54,6 +54,8 @@ izmir-etkinlik scrape                     # tara ve veritabanına yaz
 izmir-etkinlik list --bucket bu_hafta     # kayıtlıları listele
 izmir-etkinlik list --free                # sadece ücretsizler
 izmir-etkinlik stats                      # kaynak sağlığı
+izmir-etkinlik temizle --hepsi            # tüm kayıtları sil, sıfırdan tara
+izmir-etkinlik temizle --bayat-gun 14     # görülmeyen kayıtları budala
 ```
 
 ### Botu çalıştırma
@@ -87,6 +89,7 @@ izmir-etkinlik serve
 | `/ayarlar` | Bildirim tercihleri (bülten, yeni etkinlik, sadece ücretsiz) |
 | `/durum` | Kaç etkinlik var, kaynaklar sağlıklı mı |
 | `/tara` | *(yönetici)* Elle tarama başlat |
+| `/temizle` | *(yönetici)* Tüm kayıtları silip sıfırdan tara |
 
 Komut yazmadan düz metin gönderirseniz arama olarak yorumlanır.
 
@@ -295,6 +298,7 @@ Tüm ayarlar ortam değişkeni; tam liste için `.env.example`. Sık kullanılan
 | `DEDUP_THRESHOLD` | `0.82` | Birleştirme eşiği |
 | `HTTP_DELAY_SECONDS` | `1.0` | Aynı siteye istekler arası bekleme |
 | `RESPECT_ROBOTS` | `true` | robots.txt'e uy |
+| `PRUNE_STALE_DAYS` | `14` | Bu süredir görülmeyen kayıtları sil (`0` = kapalı) |
 | `ONLY_SOURCES` | boş | Test için tek kaynak: `bubilet,biletinial` |
 
 ---
@@ -323,8 +327,10 @@ Aynı token ile başka bir yerde ikinci bir kopya çalışıyorsa polling çakı
 sorunlu kaynak için `izmir-etkinlik doctor --source <anahtar> --save-html` çalıştırın.
 
 **Etkinlik adı yerine tarih görünüyor** (ör. "29 Ağustos 2026") → Bu artık
-otomatik eleniyor. Hâlâ görüyorsanız veritabanında eski kayıtlar duruyordur:
-`izmir-etkinlik scrape --no-cache` ile yeniden tarayın.
+otomatik eleniyor, ama düzeltme öncesinde kaydedilmiş satırlar veritabanında
+kalır (gelecek tarihli oldukları için kendiliğinden silinmezler). Botta
+`/temizle`, terminalde `izmir-etkinlik temizle --hepsi` çalıştırın. Bundan
+sonra `PRUNE_STALE_DAYS` bu tür artıkları kendiliğinden budar.
 
 **Mekan (📍) veya fiyat görünmüyor** → Önce `izmir-etkinlik doctor --source
 <anahtar> --save-html` çalıştırıp kartın HTML'ine bakın, sonra

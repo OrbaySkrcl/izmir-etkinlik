@@ -218,6 +218,26 @@ async def category_counts(session: AsyncSession, *, ref: date | None = None) -> 
     return {row[0]: row[1] for row in (await session.execute(stmt)).all()}
 
 
+async def prune_stale_events(session: AsyncSession, *, days: int = 14) -> int:
+    """Son taramalarda görülmeyen kayıtları siler.
+
+    Bir kaynak etkinliği kaldırdığında veya ayrıştırma düzeltildiği için
+    kayıt yeni bir kimlikle geldiğinde, eski satır aksi halde gelecek
+    tarihli olduğu için sonsuza dek listede kalır.
+    """
+    if days <= 0:
+        return 0
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    result = await session.execute(delete(EventRow).where(EventRow.last_seen < cutoff))
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def delete_all_events(session: AsyncSession) -> int:
+    """Tüm etkinlik kayıtlarını siler (elle tam yeniden tarama için)."""
+    result = await session.execute(delete(EventRow))
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 async def prune_old_events(
     session: AsyncSession, *, keep_days: int = 30, ref: date | None = None
 ) -> int:

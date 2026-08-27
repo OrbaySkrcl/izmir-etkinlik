@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     dedup_threshold: float = 0.82
     dedup_date_tolerance_days: int = 1
 
+    # Son bu kadar gündür hiçbir taramada görülmeyen kayıtlar silinir.
+    # 0 = kapalı. Kaynak uzun süre erişilemezse kayıtları da düşeceğinden
+    # tarama aralığına göre rahat bir pay bırakın.
+    prune_stale_days: int = 14
+
     # --- Bülten ---
     digest_hour: int = 9  # Europe/Istanbul
     digest_minute: int = 0

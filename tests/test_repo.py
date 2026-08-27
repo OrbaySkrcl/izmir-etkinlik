@@ -160,6 +160,68 @@ class TestPrune:
         assert counts["toplam"] == 1
 
 
+class TestStalePrune:
+    """Ayrıştırma düzeltmelerinden sonra eski kayıtlar kendiliğinden düşmeli."""
+
+    async def test_stale_records_removed(self, db, event_factory):
+        from datetime import UTC, datetime, timedelta
+
+        from sqlalchemy import update as sa_update
+
+        from izmir_events.store.models import EventRow
+
+        stale = event_factory("bubilet", "29 Ağustos 2026", "29 Ağustos 2026")
+        fresh = event_factory("bubilet", "Gerçek Konser", "12 Eylül 2026")
+        async with session_scope() as session:
+            await repo.upsert_events(session, [stale, fresh])
+            # Birini eski bir tarama turundan kalmış gibi işaretle.
+            await session.execute(
+                sa_update(EventRow)
+                .where(EventRow.uid == stale.uid())
+                .values(last_seen=datetime.now(UTC) - timedelta(days=30))
+            )
+
+        async with session_scope() as session:
+            removed = await repo.prune_stale_events(session, days=14)
+        assert removed == 1
+
+        async with session_scope() as session:
+            remaining = await repo.get_events(session, start=REF, limit=10)
+        assert [e.title for e in remaining] == ["Gerçek Konser"]
+
+    async def test_recently_seen_kept(self, db, event_factory):
+        async with session_scope() as session:
+            await repo.upsert_events(
+                session, [event_factory("bubilet", "Taze Konser", "12 Eylül 2026")]
+            )
+
+        async with session_scope() as session:
+            assert await repo.prune_stale_events(session, days=14) == 0
+
+    async def test_disabled_when_zero_days(self, db, event_factory):
+        async with session_scope() as session:
+            await repo.upsert_events(session, [event_factory("bubilet", "Konser", "12 Eylül 2026")])
+
+        async with session_scope() as session:
+            assert await repo.prune_stale_events(session, days=0) == 0
+
+    async def test_delete_all(self, db, event_factory):
+        async with session_scope() as session:
+            await repo.upsert_events(
+                session,
+                [
+                    event_factory("bubilet", "Bir", "12 Eylül 2026"),
+                    event_factory("bubilet", "İki", "13 Eylül 2026"),
+                ],
+            )
+
+        async with session_scope() as session:
+            assert await repo.delete_all_events(session) == 2
+
+        async with session_scope() as session:
+            assert (await repo.count_events(session, ref=REF))["toplam"] == 0
+
+
 class TestSubscribers:
     async def test_create_and_toggle(self, db):
         async with session_scope() as session:

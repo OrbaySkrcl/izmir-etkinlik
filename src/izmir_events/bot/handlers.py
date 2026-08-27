@@ -21,6 +21,7 @@ from telegram.ext import (
 from ..config import get_settings
 from ..models import Category
 from ..render import (
+    esc,
     render_bucket,
     render_events,
     render_stats,
@@ -234,7 +235,29 @@ async def cmd_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     from ..pipeline import collect_and_store
 
     result = await collect_and_store(use_cache=False)
-    await _send(update, [f"<pre>{result.report()}</pre>"])
+    await _send(update, [f"<pre>{esc(result.report())}</pre>"])
+
+
+async def cmd_purge(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/temizle — sadece yöneticiler: kayıtları silip yeniden tarar.
+
+    Ayrıştırma düzeltmelerinden sonra eski/bozuk kayıtlar gelecek tarihli
+    oldukları için kendiliğinden düşmez.
+    """
+    user = update.effective_user
+    settings = get_settings()
+    if not user or not settings.admin_ids or user.id not in settings.admin_ids:
+        await _send(update, ["Bu komut yalnızca bot yöneticileri içindir."])
+        return
+
+    async with session_scope() as session:
+        removed = await repo.delete_all_events(session)
+    await _send(update, [f"🧹 {removed} kayıt silindi. Yeniden tarama başlıyor…"])
+
+    from ..pipeline import collect_and_store
+
+    result = await collect_and_store(use_cache=False)
+    await _send(update, [f"<pre>{esc(result.report())}</pre>"])
 
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -385,6 +408,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["ayarlar", "settings"], cmd_settings))
     app.add_handler(CommandHandler(["durum", "status"], cmd_status))
     app.add_handler(CommandHandler(["tara", "scrape"], cmd_scrape))
+    app.add_handler(CommandHandler(["temizle", "purge"], cmd_purge))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(on_error)
