@@ -1,0 +1,221 @@
+# İzmir etkinlik kaynakları
+# ---------------------------------------------------------------------------
+# Her kaynak için çıkarım (extraction) sırayla denenir:
+#   jsonld     -> <script type="application/ld+json"> içindeki schema.org/Event
+#   nextdata   -> <script id="__NEXT_DATA__"> içindeki Next.js sayfa verisi
+#   selectors  -> aşağıdaki CSS seçicileri
+#   heuristic  -> tekrar eden kart yapısını otomatik bulma (son çare)
+#
+# Seçici sözdizimi:
+#   "a@href"          -> eşleşen elemanın href niteliği
+#   ".a, .b"          -> ilk eşleşen aday kullanılır (virgülle alternatif ver)
+#
+# Siteler HTML'lerini değiştirir. Seçicileri kendi makinenizde kalibre etmek için:
+#   izmir-etkinlik doctor --source bubilet --save-html
+# komutunu çalıştırın; hangi stratejinin çalıştığını ve örnek çıktıyı raporlar.
+# ---------------------------------------------------------------------------
+
+sources:
+  - key: kultursanat
+    name: "İzmir Kültür Sanat (İBB)"
+    base_url: "https://kultursanat.izmir.bel.tr/"
+    listing_urls:
+      - "https://kultursanat.izmir.bel.tr/Etkinlikler"
+      - "https://kultursanat.izmir.bel.tr/"
+    strategies: [jsonld, selectors, heuristic]
+    free_by_default: true       # Belediye etkinliklerinin çoğu ücretsiz
+    priority: 90                # Resmî kaynak: başlık/mekan bilgisi en güvenilir
+    pagination: { param: "page", start: 1, max_pages: 3 }
+    selectors:
+      item: ".etkinlik-item, .etkinlik-card, .event-item, .card, article, li.item"
+      title: ".etkinlik-adi, .title, h3, h2, .card-title, a[title]@title"
+      url: "a@href"
+      date: ".etkinlik-tarih, .tarih, .date, time@datetime, time, .card-date"
+      venue: ".etkinlik-yer, .yer, .mekan, .venue, .location, .place"
+      price: ".fiyat, .price, .ucret"
+      category: ".kategori, .category, .tur"
+      image: "img@data-src, img@src"
+    notes: "İzmir Büyükşehir Belediyesi resmî kültür-sanat takvimi. Ücretsiz etkinlik yoğunluğu yüksek."
+
+  - key: bubilet
+    name: "Bubilet İzmir"
+    base_url: "https://www.bubilet.com.tr/izmir"
+    listing_urls:
+      - "https://www.bubilet.com.tr/izmir"
+      - "https://www.bubilet.com.tr/izmir/konser"
+      - "https://www.bubilet.com.tr/izmir/tiyatro"
+      - "https://www.bubilet.com.tr/izmir/stand-up"
+      - "https://www.bubilet.com.tr/izmir/festival"
+    strategies: [nextdata, jsonld, selectors, heuristic]
+    priority: 70
+    selectors:
+      item: "[class*='event-card'], [class*='EventCard'], .card, article, a[href*='/etkinlik/']"
+      title: "h3, h2, [class*='title'], [class*='Title'], .name"
+      url: "a@href"
+      date: "[class*='date'], [class*='Date'], time@datetime, time"
+      venue: "[class*='venue'], [class*='place'], [class*='location'], [class*='Venue']"
+      price: "[class*='price'], [class*='Price'], .amount"
+      category: "[class*='category'], [class*='Category']"
+    notes: "Bilet satış platformu; Next.js tabanlı olduğu için önce __NEXT_DATA__ denenir."
+
+  - key: biletinial
+    name: "Biletinial İzmir"
+    base_url: "https://biletinial.com/tr-tr/sehrineozel/izmir"
+    listing_urls:
+      - "https://biletinial.com/tr-tr/sehrineozel/izmir"
+      - "https://biletinial.com/tr-tr/tiyatro/sehir/izmir"
+      - "https://biletinial.com/tr-tr/muzik/sehir/izmir"
+    strategies: [jsonld, nextdata, selectors, heuristic]
+    priority: 70
+    selectors:
+      item: ".event-item, .movie-item, .card, article, li[class*='item'], a[href*='/tr-tr/']"
+      title: "h3, h2, .title, .event-name, .name, img@alt"
+      url: "a@href"
+      date: ".date, .event-date, time@datetime, time, .tarih"
+      venue: ".venue, .place, .location, .salon, .theatre"
+      price: ".price, .fiyat"
+      category: ".category, .type"
+    notes: "Tiyatro ve müzik ağırlıklı. Şehir sayfası dışında kategori sayfaları da taranır."
+
+  - key: oggusto
+    name: "OGGUSTO İzmir Etkinlik Rehberi"
+    base_url: "https://www.oggusto.com/etkinlik-rehberi/izmir"
+    listing_urls:
+      - "https://www.oggusto.com/etkinlik-rehberi/izmir"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 40                 # Editoryal içerik: tarih bilgisi bazen serbest metin
+    pagination: { param: "page", start: 1, max_pages: 3 }
+    selectors:
+      item: "article, .card, .event-card, .list-item, [class*='card']"
+      title: "h2, h3, .title, .card-title"
+      url: "a@href"
+      date: ".date, time@datetime, time, [class*='date']"
+      venue: ".location, .venue, [class*='place'], [class*='location']"
+      price: ".price, [class*='price']"
+      category: ".category, .tag, [class*='category']"
+      description: "p, .summary, .excerpt"
+    notes: "Editoryal rehber. Aynı etkinlik için farklı/uzun başlıklar kullanabildiğinden dedup önemli."
+
+  - key: biletimgo
+    name: "BiletimGo İzmir"
+    base_url: "https://www.biletimgo.com/sehir-etkinlikleri/izmir"
+    listing_urls:
+      - "https://www.biletimgo.com/sehir-etkinlikleri/izmir"
+    strategies: [jsonld, nextdata, selectors, heuristic]
+    priority: 60
+    pagination: { param: "page", start: 1, max_pages: 3 }
+    selectors:
+      item: ".event-card, .card, article, [class*='event'], li[class*='item']"
+      title: "h3, h2, .title, [class*='title'], .event-name"
+      url: "a@href"
+      date: ".date, [class*='date'], time@datetime, time"
+      venue: ".venue, [class*='venue'], [class*='location'], .place"
+      price: ".price, [class*='price']"
+      category: ".category, [class*='category']"
+
+  - key: izmirmag
+    name: "İzmirMag"
+    base_url: "https://izmirmag.net/"
+    listing_urls:
+      - "https://izmirmag.net/kategori/etkinlik/"
+      - "https://izmirmag.net/"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 30                 # Haber/blog: en gürültülü kaynak
+    city_filter: true
+    pagination: { template: "https://izmirmag.net/kategori/etkinlik/page/{page}/", start: 1, max_pages: 2 }
+    selectors:
+      item: "article, .post, .entry, .card, li.post-item"
+      title: "h2, h3, .entry-title, .post-title"
+      url: "a@href"
+      date: "time@datetime, .date, .entry-date, .post-date"
+      venue: ".venue, .location"
+      category: ".cat-links, .category, .post-category"
+      description: ".entry-summary, .excerpt, p"
+    notes: "WordPress tabanlı haber sitesi. Etkinlik dışı haberleri ayıklamak için başlık filtresi uygulanır."
+
+  # --- Ek kaynaklar (kullanıcı listesinde yoktu, kapsamı genişletiyor) -------
+
+  - key: biletix
+    name: "Biletix İzmir"
+    base_url: "https://www.biletix.com"
+    listing_urls:
+      - "https://www.biletix.com/search/TURKIYE/tr?category_sk=&city_sk=%C4%B0ZM%C4%B0R"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 75                 # Türkiye'nin en büyük bilet platformu
+    selectors:
+      item: ".searchResultItem, .event-item, .card, article, tr[class*='result']"
+      title: ".searchResultName, h3, .title, .name"
+      url: "a@href"
+      date: ".searchResultDate, .date, time@datetime, time"
+      venue: ".searchResultVenue, .venue, .place, .location"
+      price: ".price, .searchResultPrice"
+      category: ".category"
+    notes: "Konser/tiyatro/spor kapsamı geniş. Seçiciler doctor ile doğrulanmalı."
+
+  - key: mobilet
+    name: "Mobilet İzmir"
+    base_url: "https://mobilet.com"
+    listing_urls:
+      - "https://mobilet.com/tr/sehir/izmir"
+    strategies: [nextdata, jsonld, selectors, heuristic]
+    priority: 55
+    selectors:
+      item: "[class*='card'], [class*='event'], article"
+      title: "h3, h2, [class*='title']"
+      url: "a@href"
+      date: "[class*='date'], time@datetime, time"
+      venue: "[class*='venue'], [class*='location']"
+      price: "[class*='price']"
+
+  - key: aassm
+    name: "Ahmed Adnan Saygun Sanat Merkezi"
+    enabled: false               # doctor ile doğrulandıktan sonra açın
+    base_url: "https://www.aassm.org.tr"
+    listing_urls:
+      - "https://www.aassm.org.tr/etkinlikler"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 85
+    free_by_default: false
+    selectors:
+      item: ".etkinlik, .event, .card, article"
+      title: "h3, h2, .title"
+      url: "a@href"
+      date: ".tarih, .date, time@datetime, time"
+      venue: ".salon, .venue"
+      price: ".fiyat, .price"
+    notes: "İzmir'in ana klasik müzik/konser salonu."
+
+  - key: devlettiyatrolari
+    name: "İzmir Devlet Tiyatroları"
+    enabled: false
+    base_url: "https://www.devtiyatro.gov.tr"
+    listing_urls:
+      - "https://www.devtiyatro.gov.tr/tr/repertuvar"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 80
+    city_filter: true
+    default_category: "tiyatro"
+    selectors:
+      item: ".oyun, .repertuar-item, .card, article"
+      title: "h3, h2, .title, .oyun-adi"
+      url: "a@href"
+      date: ".tarih, .date, time@datetime, time"
+      venue: ".sahne, .venue"
+    notes: "Şehir filtresi açık: sadece İzmir sahneleri alınır."
+
+  - key: izmirdob
+    name: "İzmir Devlet Opera ve Balesi"
+    enabled: false
+    base_url: "https://www.dobgm.gov.tr"
+    listing_urls:
+      - "https://www.dobgm.gov.tr/tr/izmir"
+    strategies: [jsonld, selectors, heuristic]
+    priority: 80
+    default_category: "opera_bale"
+    city_filter: true
+    selectors:
+      item: ".etkinlik, .event, .card, article"
+      title: "h3, h2, .title"
+      url: "a@href"
+      date: ".tarih, .date, time@datetime, time"
+      venue: ".sahne, .venue"
