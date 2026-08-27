@@ -120,6 +120,24 @@ class Settings(BaseSettings):
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
 
+    @property
+    def database_label(self) -> str:
+        """Hangi veritabanına bağlıyız? (Teşhis için; kimlik bilgisi sızdırmaz.)"""
+        if self.database_url.startswith("postgresql"):
+            return "PostgreSQL"
+        if self.is_sqlite:
+            return "SQLite"
+        return self.database_url.split("://", 1)[0] or "bilinmiyor"
+
+    @property
+    def database_is_persistent(self) -> bool:
+        """Kayıtlar yeniden dağıtımdan sağ çıkar mı?
+
+        Railway'de SQLite kullanılıyorsa veriler kapsayıcıyla birlikte
+        silinir; kalıcılık için Postgres ya da bağlı bir Volume gerekir.
+        """
+        return not self.is_sqlite
+
 
 class Selectors(BaseModel):
     """Bir kaynağın CSS seçicileri.
@@ -167,8 +185,12 @@ class SourceConfig(BaseModel):
     pagination: Pagination | None = None
     # Belediye/müze kaynaklarında fiyat yoksa ücretsiz varsay.
     free_by_default: bool = False
-    # Bu kaynak İzmir'e özel değilse başlık/adres İzmir filtresinden geçsin.
+    # Bu kaynak İzmir'e özel değilse başlık/adres İzmir filtresinden geçsin
+    # (İzmir ipucu ARANIR; ipucu yoksa kayıt elenir).
     city_filter: bool = False
+    # Açıkça başka bir şehre ait kayıtları ele (İstanbul, Ankara, semt adları…).
+    # Şehri belirsiz kayıtlar korunur; bu yüzden varsayılan olarak açık.
+    exclude_other_cities: bool = True
     # Birleştirmede hangi kaynağın başlığı/görseli tercih edilsin (büyük = öncelikli).
     priority: int = 50
     # Sadece bu kategorileri içerdiği bilinen kaynak (opsiyonel ipucu).

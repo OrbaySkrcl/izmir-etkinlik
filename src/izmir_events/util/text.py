@@ -387,3 +387,67 @@ def split_venue_from_title(title: str) -> tuple[str, str | None]:
             return title, None
         return remaining, candidate
     return title, None
+
+
+# --- Başlık kuyruğu temizliği ------------------------------------------------
+
+# Listeleme sayfalarının başlığa eklediği, etkinlikle ilgisi olmayan etiketler.
+_TRAILING_NOISE_WORDS = frozenset({"guncel", "populer", "onerilen", "vitrin"})
+
+# "İstanbul Avrupa" / "İzmir Anadolu" gibi bölge etiketleri.
+_REGION_WORDS = frozenset({"avrupa", "anadolu"})
+_REGION_CITIES = frozenset({"istanbul", "izmir", "ankara", "bursa", "antalya"})
+
+_TAIL_PUNCT = " -–—|/,·•;:"
+
+
+def _flat(text: str) -> str:
+    return strip_accents(tr_lower(text)).strip(_TAIL_PUNCT + ".")
+
+
+def strip_trailing_venue(title: str, venue: str | None) -> str:
+    """Başlığın sonunda mekan adı tekrarlanıyorsa atar.
+
+    ``("Adamlar / Harbiye Açıkhava Sahnesi", "Harbiye Açıkhava Sahnesi")``
+    -> ``"Adamlar"``
+
+    Karşılaştırma token bazlı yapılır: aksan sadeleştirme karakter sayısını
+    değiştirebildiği için dizin aritmetiği güvenli değil.
+    """
+    if not venue:
+        return title
+    title_tokens = title.split()
+    venue_tokens = venue.split()
+    if not venue_tokens or len(title_tokens) <= len(venue_tokens):
+        return title
+    tail = [_flat(t) for t in title_tokens[-len(venue_tokens) :]]
+    if tail != [_flat(t) for t in venue_tokens]:
+        return title
+    remaining = " ".join(title_tokens[: -len(venue_tokens)]).strip(_TAIL_PUNCT)
+    return remaining if len(remaining) >= 3 else title
+
+
+def strip_trailing_tags(title: str, *, drop_city: bool = False) -> str:
+    """Sondaki listeleme etiketlerini atar.
+
+    ``"Sezen Aksu İzmir Avrupa GÜNCEL"`` -> ``"Sezen Aksu"``
+
+    ``drop_city``: sondaki tek başına şehir adını da atar. Yalnızca başlıktan
+    zaten bir mekan sökülmüşse açılmalı; o zaman şehir adı bir konum etiketidir.
+    Aksi halde ``"Elveda İstanbul"`` gibi gerçek başlıklar bozulur.
+    """
+    tokens = title.split()
+    while tokens:
+        last = _flat(tokens[-1])
+        if last in _TRAILING_NOISE_WORDS:
+            tokens.pop()
+            continue
+        if len(tokens) >= 2 and last in _REGION_WORDS and _flat(tokens[-2]) in _REGION_CITIES:
+            del tokens[-2:]
+            continue
+        if drop_city and len(tokens) >= 2 and last in _REGION_CITIES:
+            tokens.pop()
+            continue
+        break
+    cleaned = " ".join(tokens).strip(_TAIL_PUNCT)
+    return cleaned if len(cleaned) >= 3 else title

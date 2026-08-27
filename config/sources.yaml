@@ -27,7 +27,9 @@ sources:
     priority: 90                # Resmî kaynak: başlık/mekan bilgisi en güvenilir
     pagination: { param: "page", start: 1, max_pages: 3 }
     selectors:
-      item: ".etkinlik-item, .etkinlik-card, .event-item, .card, article, li.item"
+      item: >
+        .etkinlik-item, .etkinlik-card, .etkinlikKutu, .event-item, .event-box,
+        .card, article, li.item, [class*='etkinlik'], [class*='event']
       title: ".etkinlik-adi, .title, h3, h2, .card-title, a[title]@title"
       url: "a@href"
       date: ".etkinlik-tarih, .tarih, .date, time@datetime, time, .card-date"
@@ -35,17 +37,17 @@ sources:
       price: ".fiyat, .price, .ucret"
       category: ".kategori, .category, .tur"
       image: "img@data-src, img@src"
-    notes: "İzmir Büyükşehir Belediyesi resmî kültür-sanat takvimi. Ücretsiz etkinlik yoğunluğu yüksek."
+    notes: >
+      İzmir Büyükşehir Belediyesi resmî kültür-sanat takvimi; ücretsiz
+      etkinliklerin ana kaynağı. DURUM: sayfalar iniyor ama hiçbir strateji
+      kayıt çıkaramıyor — seçiciler kalibre edilmeli:
+      izmir-etkinlik doctor --source kultursanat --save-html
 
   - key: bubilet
     name: "Bubilet İzmir"
     base_url: "https://www.bubilet.com.tr/izmir"
     listing_urls:
       - "https://www.bubilet.com.tr/izmir"
-      - "https://www.bubilet.com.tr/izmir/konser"
-      - "https://www.bubilet.com.tr/izmir/tiyatro"
-      - "https://www.bubilet.com.tr/izmir/stand-up"
-      - "https://www.bubilet.com.tr/izmir/festival"
     strategies: [nextdata, jsonld, selectors, heuristic]
     priority: 70
     selectors:
@@ -56,7 +58,12 @@ sources:
       venue: "[class*='venue'], [class*='place'], [class*='location'], [class*='Venue']"
       price: "[class*='price'], [class*='Price'], .amount"
       category: "[class*='category'], [class*='Category']"
-    notes: "Bilet satış platformu; Next.js tabanlı olduğu için önce __NEXT_DATA__ denenir."
+    notes: >
+      Bilet satış platformu; Next.js tabanlı olduğu için önce __NEXT_DATA__ denenir.
+      DURUM: sunucu HTTP 403 döndürüyor (WAF, bot istemcilerini engelliyor).
+      Önce robots.txt izin veriyor mu bakın; veriyorsa bu kaynağa özel
+      "headers" alanıyla farklı bir User-Agent denenebilir. robots.txt
+      taramayı yasaklıyorsa kaynağı kapalı bırakın.
 
   - key: biletinial
     name: "Biletinial İzmir"
@@ -137,6 +144,7 @@ sources:
 
   - key: biletix
     name: "Biletix İzmir"
+    enabled: false               # DURUM: 0 sonuç — sayfa JS ile yükleniyor
     base_url: "https://www.biletix.com"
     listing_urls:
       - "https://www.biletix.com/search/TURKIYE/tr?category_sk=&city_sk=%C4%B0ZM%C4%B0R"
@@ -150,10 +158,14 @@ sources:
       venue: ".searchResultVenue, .venue, .place, .location"
       price: ".price, .searchResultPrice"
       category: ".category"
-    notes: "Konser/tiyatro/spor kapsamı geniş. Seçiciler doctor ile doğrulanmalı."
+    notes: >
+      Konser/tiyatro/spor kapsamı geniş ama listeleme JavaScript ile
+      dolduruluyor; ham HTML boş geliyor. Açmadan önce bir JSON uç noktası
+      bulup listing_urls'e yazın.
 
   - key: mobilet
     name: "Mobilet İzmir"
+    enabled: false               # DURUM: listeleme URL'i HTTP 404 veriyor
     base_url: "https://mobilet.com"
     listing_urls:
       - "https://mobilet.com/tr/sehir/izmir"
@@ -166,6 +178,9 @@ sources:
       date: "[class*='date'], time@datetime, time"
       venue: "[class*='venue'], [class*='location']"
       price: "[class*='price']"
+    notes: >
+      DURUM: https://mobilet.com/tr/sehir/izmir adresi 404. Doğru şehir
+      sayfasını bulup listing_urls'i güncelledikten sonra açın.
 
   - key: aassm
     name: "Ahmed Adnan Saygun Sanat Merkezi"
@@ -219,3 +234,6 @@ sources:
       url: "a@href"
       date: ".tarih, .date, time@datetime, time"
       venue: ".sahne, .venue"
+    notes: >
+      İzmir Devlet Opera ve Balesi repertuvarı. Doğrulanmadı; açmadan önce
+      izmir-etkinlik doctor --source izmirdob ile seçicileri kalibre edin.

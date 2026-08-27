@@ -255,9 +255,17 @@ def render_event_detail(event: Event, *, ref: date | None = None) -> str:
 
 
 def render_stats(
-    counts: dict[str, int], categories: dict[str, int], last_run_text: str | None = None
+    counts: dict[str, int],
+    categories: dict[str, int],
+    last_run_text: str | None = None,
+    database: tuple[str, bool] | None = None,
 ) -> str:
-    """/durum komutunun çıktısı."""
+    """/durum komutunun çıktısı.
+
+    ``database``: (etiket, kalıcı mı) — hangi veritabanına bağlı olduğumuzu
+    gösterir. Railway'de Postgres bağlanmamışsa bot sessizce geçici SQLite'a
+    düşer ve her dağıtımda veri kaybolur; bunu görünür kılmak gerekiyor.
+    """
     lines = [
         "<b>📊 Bot Durumu</b>",
         "",
@@ -274,6 +282,11 @@ def render_stats(
                 lines.append(f"{category.emoji} {category.label}: {count}")
             except ValueError:
                 lines.append(f"• {esc(key)}: {count}")
+    if database is not None:
+        label, persistent = database
+        mark = "🗄" if persistent else "⚠️"
+        note = "" if persistent else " — geçici! Yeniden dağıtımda veri silinir"
+        lines += ["", f"{mark} Veritabanı: <b>{esc(label)}</b>{esc(note)}"]
     if last_run_text:
         lines += ["", f"<i>{esc(last_run_text)}</i>"]
     return "\n".join(lines)

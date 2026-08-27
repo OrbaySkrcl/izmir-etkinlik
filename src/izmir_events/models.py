@@ -24,6 +24,8 @@ from .util.text import (
     normalize_venue,
     slugify,
     split_venue_from_title,
+    strip_trailing_tags,
+    strip_trailing_venue,
 )
 
 
@@ -266,6 +268,20 @@ def build_event(
     venue = clean_whitespace(raw.venue) if raw.venue else None
     if not venue:
         title, venue = split_venue_from_title(title)
+        venue_came_from_title = venue is not None
+    else:
+        # Mekan zaten biliniyorsa başlıktaki tekrarını at
+        # ("Adamlar / Harbiye Açıkhava Sahnesi" -> "Adamlar").
+        shortened = strip_trailing_venue(title, venue)
+        venue_came_from_title = shortened != title
+        title = shortened
+
+    if venue:
+        venue = strip_trailing_tags(venue) or venue
+
+    # Listeleme etiketleri ("GÜNCEL", "İzmir Avrupa") başlığın parçası değil.
+    # Başlıktan mekan söküldüyse geriye kalan şehir adı da konum etiketidir.
+    title = strip_trailing_tags(title, drop_city=venue_came_from_title)
 
     return Event(
         title=title,

@@ -321,6 +321,9 @@ def stats() -> None:
             )
 
     counts, categories, health, run = asyncio.run(_run())
+    settings = get_settings()
+    mark = "[green]kalıcı[/green]" if settings.database_is_persistent else "[yellow]geçici[/yellow]"
+    console.print(f"[bold]Veritabanı:[/bold] {settings.database_label} ({mark})")
     console.print(
         f"[bold]Gelecek etkinlik:[/bold] {counts['gelecek']} "
         f"([green]{counts['ucretsiz']} ücretsiz[/green], "

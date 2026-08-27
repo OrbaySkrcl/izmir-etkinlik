@@ -119,6 +119,20 @@ Railway hesabınız hazırsa:
 
 4. **Dağıtın.** Loglarda `bot_ready` satırını görünce Telegram'dan `/start` yazın.
 
+### Veritabanı bağlı mı?
+
+Botta **`/durum`** yazın; çıktının sonunda hangi veritabanına bağlı olduğu yazar:
+
+```
+🗄 Veritabanı: PostgreSQL              ← doğru
+⚠️ Veritabanı: SQLite — geçici! Yeniden dağıtımda veri silinir
+```
+
+`SQLite` görüyorsanız `DATABASE_URL` servise ulaşmıyordur. Railway'de
+*Variables* sekmesinde değerinin `${{Postgres.DATABASE_URL}}` olduğundan emin
+olun (Postgres servisinin adı farklıysa onu yazın). Terminalde aynı bilgi
+`izmir-etkinlik stats` çıktısının ilk satırındadır.
+
 ### Polling mi webhook mu?
 
 Varsayılan **long polling** — ek yapılandırma istemez ve Railway'de sorunsuz çalışır.
@@ -137,18 +151,28 @@ Webhook modu tek replika ile çalışmalıdır (`numReplicas: 1`).
 
 ## Kaynaklar
 
-| Anahtar | Kaynak | Öncelik | Not |
+| Anahtar | Kaynak | Öncelik | Durum |
 |---|---|---|---|
-| `kultursanat` | [İzmir Kültür Sanat (İBB)](https://kultursanat.izmir.bel.tr/) | 90 | Resmî takvim; ücretsiz etkinlik yoğun |
-| `biletix` | Biletix İzmir | 75 | *(ek kaynak)* En geniş kapsam |
-| `bubilet` | [Bubilet İzmir](https://www.bubilet.com.tr/izmir) | 70 | Konser/tiyatro/stand-up |
-| `biletinial` | [Biletinial İzmir](https://biletinial.com/tr-tr/sehrineozel/izmir) | 70 | Tiyatro ağırlıklı |
-| `biletimgo` | [BiletimGo İzmir](https://www.biletimgo.com/sehir-etkinlikleri/izmir) | 60 | |
-| `mobilet` | Mobilet İzmir | 55 | *(ek kaynak)* |
-| `oggusto` | [OGGUSTO Etkinlik Rehberi](https://www.oggusto.com/etkinlik-rehberi/izmir) | 40 | Editoryal; başlıklar uzun |
-| `izmirmag` | [İzmirMag](https://izmirmag.net/) | 30 | Haber sitesi; en gürültülü |
+| `biletinial` | [Biletinial İzmir](https://biletinial.com/tr-tr/sehrineozel/izmir) | 70 | ✅ çalışıyor (`selectors`) |
+| `biletimgo` | [BiletimGo İzmir](https://www.biletimgo.com/sehir-etkinlikleri/izmir) | 60 | ✅ çalışıyor (`heuristic`) |
+| `izmirmag` | [İzmirMag](https://izmirmag.net/) | 30 | ✅ çalışıyor (`heuristic`) |
+| `oggusto` | [OGGUSTO Etkinlik Rehberi](https://www.oggusto.com/etkinlik-rehberi/izmir) | 40 | ⚠️ az sonuç; editoryal içerik |
+| `kultursanat` | [İzmir Kültür Sanat (İBB)](https://kultursanat.izmir.bel.tr/) | 90 | ⚠️ **0 sonuç — kalibre edilmeli** |
+| `bubilet` | [Bubilet İzmir](https://www.bubilet.com.tr/izmir) | 70 | ⚠️ sunucu HTTP 403 döndürüyor |
+| `biletix` | Biletix İzmir | 75 | ⛔ kapalı — sayfa JS ile yükleniyor |
+| `mobilet` | Mobilet İzmir | 55 | ⛔ kapalı — listeleme URL'i 404 |
+| `aassm`, `devlettiyatrolari`, `izmirdob` | — | 80-85 | ⛔ kapalı — doğrulanmadı |
 
-Kapalı gelen (açmadan önce `doctor` ile doğrulayın): `aassm`, `devlettiyatrolari`, `izmirdob`.
+`kultursanat` ücretsiz etkinliklerin ana kaynağı; şu an hiçbir strateji kayıt
+çıkaramıyor. Kalibre etmek için:
+
+```bash
+izmir-etkinlik doctor --source kultursanat --save-html
+```
+
+`bubilet` 403 dönüyor (WAF bot istemcilerini engelliyor). robots.txt taramaya
+izin veriyorsa `sources.yaml`'daki `headers` alanıyla farklı bir User-Agent
+denenebilir; yasaklıyorsa kaynağı kapalı bırakın.
 
 **Öncelik** ne işe yarar: birden fazla kaynak aynı etkinliği verdiğinde başlık, mekan ve
 görsel yüksek öncelikli kaynaktan alınır. Fiyat aralığı ise tüm kaynakların birleşimidir.
@@ -245,9 +269,24 @@ Kaynak sayfaları kirli veri üretir; bot bunları listeye almadan önce eler:
 | Mekan başlığın içindedir | `Sezen Aksu \| Kültürpark Açıkhava Tiyatrosu` | Ayraçtan sonraki parça mekan sözcüğü içeriyorsa mekana taşınır |
 | Mekan seçicisi tutmaz | `<div>Konak Sahnesi · 400 TL</div>` | Kart elemanları gezilir, mekan sözcüğü içeren kısa parça alınır (fiyat/tarih içerenler elenir) |
 | Fiyat seçicisi tutmaz | aynı kart | Kart metninde para birimine bitişik tutar aranır |
+| Başka şehrin etkinliği | `Adamlar İstanbul Avrupa / Harbiye…` | Açıkça başka şehre ait kayıtlar elenir (aşağıya bakın) |
+| Başlıkta mekan tekrarı | `Adamlar İzmir / Kültürpark Sahnesi GÜNCEL` | Mekan ve listeleme etiketi başlıktan sökülür → `Adamlar` |
 
 Gün adları yalnızca metinde gerçek bir tarih varsa silinir; `Pazar Yeri Festivali`
 ve `Cuma Konserleri` gibi başlıklar bozulmaz.
+
+**Şehir filtresi.** Bilet siteleri "İzmir" sayfasında başka şehirlerin
+etkinliklerini de listeleyebiliyor. Filtre *dışlama* mantığıyla çalışır:
+metinde açıkça başka bir şehir ya da İzmir dışı bir semt/mekan geçiyorsa
+(`İstanbul`, `Kadıköy`, `Moda Sahnesi`, `Dasdas`…) kayıt elenir. Şehri
+belirsiz kayıtlar **korunur**, çünkü İzmir etkinliklerinin çoğu adında
+"İzmir" geçirmiyor (`Azat Bozkurt – Tek Kişilik Stand Up`). Metinde hem İzmir
+hem başka bir şehir varsa İzmir kazanır.
+
+Eşleştirme kelime sınırına saygı gösterir; aksi halde İstanbul'un
+**Selamiçeşme**'si İzmir'in **Çeşme**'sine, İzmir'in **Bostanlı**'sı
+İstanbul'un **Bostancı**'sına takılırdı. Kaynak bazında
+`exclude_other_cities: false` ile kapatılabilir.
 
 ### 4. Nazik tarama
 
@@ -306,7 +345,7 @@ Tüm ayarlar ortam değişkeni; tam liste için `.env.example`. Sık kullanılan
 ## Geliştirme
 
 ```bash
-pytest -q                              # 241 test
+pytest -q                              # 376 test
 pytest --cov=izmir_events              # kapsam raporu
 ruff check src tests && ruff format src tests
 mypy src/izmir_events
@@ -337,6 +376,10 @@ sonra `PRUNE_STALE_DAYS` bu tür artıkları kendiliğinden budar.
 `config/sources.yaml` içindeki `venue` / `price` seçicilerini düzeltin.
 Seçici olmadan da kart metninden okumaya çalışılır, ama doğru seçici her zaman
 daha isabetlidir.
+
+**Başka şehrin etkinlikleri listeleniyor** → Filtreyi genişletmek için
+`src/izmir_events/scrape/runner.py` içindeki `_OTHER_CITY_HINTS` listesine
+ilgili şehir/semt/mekan adını ekleyin, sonra `/temizle` ile yeniden tarayın.
 
 **Aynı etkinlik iki kez görünüyor** → `DEDUP_THRESHOLD`'u kademeli düşürün (0.78 deneyin).
 Başlıklar çok farklıysa `src/izmir_events/util/text.py` içindeki `NOISE_TOKENS`'a

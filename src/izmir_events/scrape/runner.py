@@ -71,6 +71,7 @@ class SourceResult:
     raw_count: int = 0
     dropped_no_date: int = 0
     dropped_filtered: int = 0
+    dropped_other_city: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -84,7 +85,7 @@ class SourceResult:
             f"{self.name}: {len(self.events)} etkinlik "
             f"[{self.strategy or '-'}] "
             f"({self.pages_fetched} sayfa, {self.dropped_no_date} tarihsiz, "
-            f"{self.dropped_filtered} filtrelendi)"
+            f"{self.dropped_filtered} filtrelendi, {self.dropped_other_city} başka şehir)"
         )
 
 
@@ -132,11 +133,127 @@ def _is_junk(title: str) -> bool:
     return is_date_only(title)
 
 
-def _mentions_izmir(raw: RawEvent) -> bool:
-    blob = strip_accents(
+# Başka bir şehre ait olduğunu açıkça gösteren ipuçları: şehir adları ve
+# İzmir dışındaki tanınmış semt/mekan adları. Bilet siteleri "İzmir" sayfasında
+# başka şehirlerin etkinliklerini de listeleyebiliyor.
+_OTHER_CITY_HINTS = (
+    # Şehirler
+    "istanbul",
+    "ankara",
+    "bursa",
+    "antalya",
+    "adana",
+    "konya",
+    "eskisehir",
+    "trabzon",
+    "gaziantep",
+    "kayseri",
+    "mersin",
+    "samsun",
+    "denizli",
+    "malatya",
+    "diyarbakir",
+    "sakarya",
+    "kocaeli",
+    "izmit",
+    "canakkale",
+    "balikesir",
+    "aydin",
+    "manisa",
+    "afyon",
+    "isparta",
+    "edirne",
+    "tekirdag",
+    "mugla",
+    "bodrum",
+    "marmaris",
+    "fethiye",
+    "kusadasi",
+    "kapadokya",
+    "nevsehir",
+    "sivas",
+    "erzurum",
+    "kibris",
+    # İstanbul semtleri ve mekanları
+    "kadikoy",
+    "besiktas",
+    "beyoglu",
+    "sisli",
+    "moda sahnesi",
+    "harbiye",
+    "maslak",
+    "bakirkoy",
+    "atasehir",
+    "zorlu psm",
+    "dasdas",
+    "maltepe",
+    "uskudar",
+    "levent",
+    "kartal",
+    "pendik",
+    "sariyer",
+    "taksim",
+    "nisantasi",
+    "zeytinburnu",
+    "umraniye",
+    "bostanci",
+    "caddebostan",
+    "selamicesme",
+    "florya",
+    "yesilkoy",
+    "avcilar",
+    "beykoz",
+    "silivri",
+    "kucukciftlik",
+    "cemil topuzlu",
+    "kurucesme",
+    "sisli",
+    "mecidiyekoy",
+    "bagdat caddesi",
+    # Ankara mekanları
+    "cankaya",
+    "kizilay",
+    "tunali",
+    "batikent",
+    "cso ada",
+)
+
+# İzmir ipuçları kelime BAŞINDA aranır: "izmir'de"/"izmirde"/"urladam" tutar,
+# ama İstanbul'un "Selamiçeşme" semti İzmir'in "Çeşme"sine eşleşmez.
+_IZMIR_RE = re.compile(r"\b(?:" + "|".join(re.escape(h) for h in _IZMIR_HINTS) + r")")
+
+# Başka şehir ipuçları TAM kelime aranır: yanlış eleme yapmaktansa kaçırmak
+# yeğdir ("Aydınlık Gece" başlığı Aydın ili sanılmasın).
+_OTHER_CITY_RE = re.compile(r"\b(?:" + "|".join(re.escape(h) for h in _OTHER_CITY_HINTS) + r")\b")
+
+
+def _event_blob(raw: RawEvent) -> str:
+    """Filtreler için etkinliğin tüm metinlerini tek bir aksansız dizeye toplar."""
+    return strip_accents(
         tr_lower(" ".join(p for p in (raw.title, raw.venue, raw.description, raw.url) if p))
     )
-    return any(hint in blob for hint in _IZMIR_HINTS)
+
+
+def _mentions_izmir(raw: RawEvent) -> bool:
+    return bool(_IZMIR_RE.search(_event_blob(raw)))
+
+
+def _is_other_city(raw: RawEvent) -> bool:
+    """Etkinlik açıkça başka bir şehre mi ait?
+
+    Bu bir İzmir botu; "İstanbul Avrupa / Harbiye Cemil Topuzlu Açıkhava
+    Sahnesi" gibi kayıtlar listeye girmemeli. Dışlama yalnızca *açık* bir
+    başka-şehir işareti varsa uygulanır; şehri belirsiz kayıtlar korunur,
+    çünkü İzmir etkinliklerinin çoğu adında "İzmir" geçirmiyor
+    ("Azat Bozkurt – Tek Kişilik Stand Up").
+
+    Metinde hem İzmir hem başka bir şehir geçiyorsa ("İstanbul Devlet
+    Tiyatrosu İzmir Turnesi") İzmir kazanır.
+    """
+    blob = _event_blob(raw)
+    if not _OTHER_CITY_RE.search(blob):
+        return False
+    return not _IZMIR_RE.search(blob)
 
 
 def run_extractors(html: str, url: str, source: SourceConfig) -> tuple[list[RawEvent], str | None]:
@@ -207,6 +324,9 @@ async def scrape_source(
             continue
         if source.city_filter and not _mentions_izmir(raw):
             result.dropped_filtered += 1
+            continue
+        if source.exclude_other_cities and _is_other_city(raw):
+            result.dropped_other_city += 1
             continue
         if source.default_category and not raw.category_text:
             raw = raw.model_copy(update={"category_text": source.default_category})

@@ -40,6 +40,17 @@ class TestSourcesFile:
         for source in load_sources(CONFIG):
             assert source.strategies, source.key
 
+    def test_other_city_exclusion_on_by_default(self):
+        """Bu bir İzmir botu: başka şehir kayıtları varsayılan olarak elenmeli."""
+        for source in load_sources(CONFIG):
+            assert source.exclude_other_cities, source.key
+
+    def test_disabled_sources_document_why(self):
+        """Kapalı kaynakların notunda gerekçe olmalı."""
+        for source in load_sources(CONFIG):
+            if not source.enabled:
+                assert source.notes.strip(), source.key
+
     def test_selector_based_sources_define_item(self):
         """'selectors' stratejisi açık olan kaynakta item seçicisi olmalı."""
         for source in load_sources(CONFIG):
@@ -94,6 +105,15 @@ class TestSettings:
     def test_webhook_mode_detection(self):
         assert not Settings().use_webhook
         assert Settings(webhook_url="https://x.test").use_webhook
+
+    def test_database_label(self):
+        assert Settings(database_url="postgres://u:p@h/d").database_label == "PostgreSQL"
+        assert Settings(database_url="sqlite:///x.db").database_label == "SQLite"
+
+    def test_sqlite_marked_as_not_persistent(self):
+        # Railway'de SQLite kapsayıcıyla birlikte silinir; /durum bunu göstermeli.
+        assert not Settings(database_url="sqlite:///x.db").database_is_persistent
+        assert Settings(database_url="postgres://u:p@h/d").database_is_persistent
 
     def test_is_sqlite(self):
         assert Settings(database_url="sqlite:///x.db").is_sqlite

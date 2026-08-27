@@ -209,7 +209,13 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"{run.raw_count} kayıt -> {run.unique_count} benzersiz "
             f"({run.duration_seconds:.0f} sn)"
         )
-    text = render_stats(counts, categories, last_run_text)
+    settings = get_settings()
+    text = render_stats(
+        counts,
+        categories,
+        last_run_text,
+        database=(settings.database_label, settings.database_is_persistent),
+    )
 
     if health:
         lines = ["", "<b>Kaynaklar</b>"]
