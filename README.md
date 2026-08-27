@@ -231,7 +231,22 @@ Asıl zor kısım. Sıra şöyle:
 Eşik `DEDUP_THRESHOLD` ile ayarlanabilir (varsayılan `0.82`). Düşürürseniz daha çok
 birleşir (yanlış birleştirme riski artar), yükseltirseniz daha az.
 
-### 3. Nazik tarama
+### 3. Veri temizliği
+
+Kaynak sayfaları kirli veri üretir; bot bunları listeye almadan önce eler:
+
+| Sorun | Örnek | Ne yapılır |
+|---|---|---|
+| Tarih elemanı başlık sanılır | `29 Ağustos 2026` | Başlık adayları sırayla denenir, tarihten ibaret olanlar atlanır; hepsi tarihse kayıt elenir |
+| Tarih başlığa yapışıktır | `Konken Partisi ... Tiyatrosu 18 Eylül 2026` | Tarih ifadesi başlıktan ayıklanır (hem gösterim hem tekilleştirme için) |
+| Mekan başlığın içindedir | `Sezen Aksu \| Kültürpark Açıkhava Tiyatrosu` | Ayraçtan sonraki parça mekan sözcüğü içeriyorsa mekana taşınır |
+| Mekan seçicisi tutmaz | `<div>Konak Sahnesi · 400 TL</div>` | Kart elemanları gezilir, mekan sözcüğü içeren kısa parça alınır (fiyat/tarih içerenler elenir) |
+| Fiyat seçicisi tutmaz | aynı kart | Kart metninde para birimine bitişik tutar aranır |
+
+Gün adları yalnızca metinde gerçek bir tarih varsa silinir; `Pazar Yeri Festivali`
+ve `Cuma Konserleri` gibi başlıklar bozulmaz.
+
+### 4. Nazik tarama
 
 - Host başına eşzamanlılık sınırı ve istekler arası bekleme (`HTTP_DELAY_SECONDS`)
 - `robots.txt` kontrolü (`RESPECT_ROBOTS=true`, üretimde açık bırakın)
@@ -306,6 +321,16 @@ Aynı token ile başka bir yerde ikinci bir kopya çalışıyorsa polling çakı
 
 **Etkinlik gelmiyor** → `izmir-etkinlik stats` ile kaynak sağlığına bakın, sonra
 sorunlu kaynak için `izmir-etkinlik doctor --source <anahtar> --save-html` çalıştırın.
+
+**Etkinlik adı yerine tarih görünüyor** (ör. "29 Ağustos 2026") → Bu artık
+otomatik eleniyor. Hâlâ görüyorsanız veritabanında eski kayıtlar duruyordur:
+`izmir-etkinlik scrape --no-cache` ile yeniden tarayın.
+
+**Mekan (📍) veya fiyat görünmüyor** → Önce `izmir-etkinlik doctor --source
+<anahtar> --save-html` çalıştırıp kartın HTML'ine bakın, sonra
+`config/sources.yaml` içindeki `venue` / `price` seçicilerini düzeltin.
+Seçici olmadan da kart metninden okumaya çalışılır, ama doğru seçici her zaman
+daha isabetlidir.
 
 **Aynı etkinlik iki kez görünüyor** → `DEDUP_THRESHOLD`'u kademeli düşürün (0.78 deneyin).
 Başlıklar çok farklıysa `src/izmir_events/util/text.py` içindeki `NOISE_TOKENS`'a

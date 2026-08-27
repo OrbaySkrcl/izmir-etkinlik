@@ -361,6 +361,62 @@ def parse_dates(raw: str | None, *, ref: date | None = None) -> EventDates | Non
     return None
 
 
+# --- Başlıktan tarih ayıklama ------------------------------------------------
+
+# Sıra önemli: uzun kalıplar (aralıklar) önce temizlenmeli.
+_STRIP_PATTERNS = (
+    _ISO_RE,
+    _RANGE_CROSS_MONTH_RE,
+    _RANGE_SAME_MONTH_RE,
+    _DMY_RE,
+    _NUMERIC_DATE_RE,
+    _TIME_RE,
+)
+_DATE_LABEL_RE = re.compile(r"\b(saat|tarih|tarihinde|tarihleri|itibariyle)\b", re.IGNORECASE)
+_LEFTOVER_PUNCT = " -–—|/•·,:;.\t"
+
+
+def strip_date_expressions(text: str) -> str:
+    """Metinden tarih/saat ifadelerini ayıklar.
+
+    ``"Konken Partisi / Suat Taşer Tiyatrosu 18 Eylül 2026"``
+    -> ``"Konken Partisi / Suat Taşer Tiyatrosu"``
+
+    Gün adları (``Cuma``, ``Pazar``) yalnızca metinde gerçek bir tarih de
+    varsa silinir: ``"Pazar Yeri Festivali"`` gibi başlıklar bozulmasın diye.
+    """
+    if not text:
+        return ""
+    out = _norm(text)
+    had_date = any(pattern.search(out) for pattern in _STRIP_PATTERNS)
+    for pattern in _STRIP_PATTERNS:
+        out = pattern.sub(" ", out)
+    if had_date:
+        out = _WEEKDAY_RE.sub(" ", out)
+    out = _DATE_LABEL_RE.sub(" ", out)
+    return _norm(out).strip(_LEFTOVER_PUNCT)
+
+
+def is_date_only(text: str) -> bool:
+    """Metin yalnızca bir tarih/saat ifadesinden mi ibaret?
+
+    Kaynak sayfalarında tarih elemanı bazen başlık sanılıp
+    ``"29 Ağustos 2026"`` gibi anlamsız etkinlik adları üretiliyor.
+    """
+    if not text or not text.strip():
+        return True
+    stripped = _norm(text)
+    stripped = _WEEKDAY_RE.sub(" ", stripped)
+    for pattern in _STRIP_PATTERNS:
+        stripped = pattern.sub(" ", stripped)
+    stripped = _DATE_LABEL_RE.sub(" ", stripped)
+    # Göreli ifadeler ("bugün", "yarın") de tek başına başlık sayılmaz.
+    for key in _RELATIVE:
+        stripped = stripped.lower().replace(key, " ")
+    letters = [c for c in stripped if c.isalpha()]
+    return len(letters) < 3
+
+
 # --- Kovalama ----------------------------------------------------------------
 
 

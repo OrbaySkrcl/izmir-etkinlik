@@ -9,9 +9,22 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .util.dates import Bucket, EventDates, classify, format_dates, parse_dates
+from .util.dates import (
+    Bucket,
+    EventDates,
+    classify,
+    format_dates,
+    parse_dates,
+    strip_date_expressions,
+)
 from .util.money import Price, parse_price
-from .util.text import clean_whitespace, normalize_title, normalize_venue, slugify
+from .util.text import (
+    clean_whitespace,
+    normalize_title,
+    normalize_venue,
+    slugify,
+    split_venue_from_title,
+)
 
 
 class Category(StrEnum):
@@ -228,6 +241,10 @@ def build_event(
     date_blob = " ".join(p for p in (raw.start_iso, raw.date_text, raw.time_text) if p) or None
     dates = parse_dates(date_blob, ref=ref)
     if dates is None:
+        # Bazı kaynaklarda tarih yalnızca başlıkta geçiyor
+        # ("Konken Partisi ... 18 Eylül 2026"); kaydı elemeden önce oraya bak.
+        dates = parse_dates(raw.title, ref=ref)
+    if dates is None:
         return None
     if raw.end_iso:
         end_dates = parse_dates(raw.end_iso, ref=ref)
@@ -237,13 +254,28 @@ def build_event(
     price = parse_price(raw.price_text, free_by_default=free_by_default)
     url = raw.url or ""
 
+    # Başlığa yapışmış tarihi at: hem gösterim hem tekilleştirme için gürültü.
+    # Ayıklama sonrası anlamlı bir şey kalmıyorsa orijinali koru.
+    title = clean_whitespace(raw.title)
+    without_dates = strip_date_expressions(title)
+    if len(without_dates) >= 4:
+        title = without_dates
+
+    # Mekan bilgisi yoksa başlıkta gizli olabilir
+    # ("Konken Partisi / Bostanlı Suat Taşer Tiyatrosu").
+    venue = clean_whitespace(raw.venue) if raw.venue else None
+    if not venue:
+        title, venue = split_venue_from_title(title)
+
     return Event(
-        title=clean_whitespace(raw.title),
+        title=title,
         start=dates.start,
         end=dates.end,
         start_time=dates.start_time,
-        venue=clean_whitespace(raw.venue) if raw.venue else None,
-        category=guess_category(raw.category_text, raw.title, raw.description, venue=raw.venue),
+        venue=venue,
+        # Temizlenmiş başlık kullanılır: mekandan gelen "Tiyatrosu" kelimesi
+        # ham başlıkta kalsaydı konseri tiyatro sanırdık.
+        category=guess_category(raw.category_text, title, raw.description, venue=venue),
         is_free=price.is_free,
         price_min=price.min_amount,
         price_max=price.max_amount,

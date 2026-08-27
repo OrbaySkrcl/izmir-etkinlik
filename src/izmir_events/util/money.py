@@ -41,12 +41,14 @@ PAID_HINTS: tuple[str, ...] = ("tl", "try", "₺", "usd", "eur", "bilet al", "sa
 
 _CURRENCY_RE = re.compile(r"(?:₺|\bTL\b|\bTRY\b)", re.IGNORECASE)
 # 1.250,50 | 1250,50 | 1250.50 | 1250
-_NUM = r"\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?"
+# Türkçe'de binlik ayracı NOKTA'dır, boşluk değil. Boşluğa izin vermek
+# "… 2026 750 TL" metnini "026 750" -> 26750 olarak okuyordu.
+_NUM = r"\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?"
 _AMOUNT_RE = re.compile(rf"\b(?:{_NUM})\b")
 # Para birimine BİTİŞİK sayılar. "18 Eylül ... 650 TL" metninde sadece 650'yi
 # yakalar; tarihteki gün numarasını fiyat sanmaz.
 _CURRENCY_AMOUNT_RE = re.compile(
-    rf"(?P<before>{_NUM})\s*(?:₺|\bTL\b|\bTRY\b)"
+    rf"\b(?P<before>{_NUM})\s*(?:₺|\bTL\b|\bTRY\b)"
     rf"|(?:₺|\bTL\b|\bTRY\b)\s*(?P<after>{_NUM})",
     re.IGNORECASE,
 )

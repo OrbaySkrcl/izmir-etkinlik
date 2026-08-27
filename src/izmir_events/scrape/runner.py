@@ -11,7 +11,7 @@ import structlog
 
 from ..config import SourceConfig
 from ..models import Event, RawEvent, build_event
-from ..util.dates import today
+from ..util.dates import is_date_only, today
 from ..util.text import strip_accents, tr_lower
 from .extractors import (
     extract_heuristic,
@@ -118,10 +118,18 @@ def paged_urls(source: SourceConfig) -> list[str]:
 
 
 def _is_junk(title: str) -> bool:
+    """Etkinlik adı olmayan başlıkları eler.
+
+    İki tür gürültü var: site menüsü ("Anasayfa", "Sepet") ve tarih
+    elemanının başlık sanılması ("29 Ağustos 2026"). İkincisi kullanıcıya
+    tarihi kendi adı olan sahte etkinlikler olarak görünür.
+    """
     flat = strip_accents(tr_lower(title)).strip(" .:-|")
     if len(flat) < 3 or len(flat) > 180:
         return True
-    return bool(_JUNK_TITLE_RE.match(flat))
+    if _JUNK_TITLE_RE.match(flat):
+        return True
+    return is_date_only(title)
 
 
 def _mentions_izmir(raw: RawEvent) -> bool:

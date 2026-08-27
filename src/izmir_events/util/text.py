@@ -340,3 +340,50 @@ def clean_display_title(title: str) -> str:
     if is_shouting(text):
         text = tr_title(tr_lower(text))
     return clean_whitespace(text) or clean_whitespace(title)
+
+
+# --- Başlıktan mekan ayırma --------------------------------------------------
+
+# Bir metin parçasının mekan adı olduğunu gösteren sözcükler.
+VENUE_HINT_RE = re.compile(
+    r"\b("
+    r"tiyatro(su)?|sahne(si)?|salon(u)?|oditoryum|amfi(tiyatro)?|arena|stadyum|"
+    r"a[çc][ıi]khava|k[üu]lt[üu]rpark|kongre|fuar|m[üu]ze(si)?|galeri(si)?|"
+    r"sanat\s+merkezi|k[üu]lt[üu]r\s+merkezi|performance\s+hall|"
+    r"avm|otel|hotel|kamp[üu]s|[üu]niversite|konservatuvar|kitapevi|kitab[ei]vi"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Başlıkta mekanı ayıran işaretler: " / ", " | ", " - ".
+_TITLE_VENUE_SPLIT_RE = re.compile(r"\s*[/|]\s*|\s+[-–—]\s+")
+
+
+def split_venue_from_title(title: str) -> tuple[str, str | None]:
+    """Başlığın sonuna yapıştırılmış mekan adını ayırır.
+
+    ``"Konken Partisi / Bostanlı Suat Taşer Tiyatrosu"``
+    -> ``("Konken Partisi", "Bostanlı Suat Taşer Tiyatrosu")``
+
+    Yalnızca ayraçtan *sonraki* parça mekan sözcüğü içeriyorsa bölünür;
+    ``"Tiyatro Oyunu - Hamlet"`` gibi başlıklar olduğu gibi kalır. Ayrıca
+    geriye anlamlı bir başlık kalmıyorsa bölme yapılmaz.
+    """
+    title = clean_whitespace(title)
+    if not title:
+        return title, None
+    parts = [p.strip() for p in _TITLE_VENUE_SPLIT_RE.split(title) if p.strip()]
+    if len(parts) < 2:
+        return title, None
+
+    # Sondan başa doğru ilk mekan adayını bul.
+    for index in range(len(parts) - 1, 0, -1):
+        candidate = parts[index]
+        if not VENUE_HINT_RE.search(candidate):
+            continue
+        remaining = " / ".join(parts[:index]).strip()
+        # Geriye anlamlı bir başlık kalmalı, yoksa mekan zaten başlığın kendisi.
+        if len(remaining) < 4 or not _is_meaningful(remaining):
+            return title, None
+        return remaining, candidate
+    return title, None

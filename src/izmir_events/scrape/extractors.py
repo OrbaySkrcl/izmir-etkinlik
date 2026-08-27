@@ -26,8 +26,8 @@ import structlog
 from selectolax.parser import HTMLParser, Node
 
 from ..models import RawEvent
-from ..util.dates import parse_dates
-from ..util.text import clean_whitespace
+from ..util.dates import is_date_only, parse_dates, strip_date_expressions
+from ..util.text import VENUE_HINT_RE, clean_whitespace
 from .http import absolutize
 
 log = structlog.get_logger(__name__)
@@ -166,6 +166,95 @@ def select_value(node: Node, spec: str, *, self_ok: bool = True) -> str | None:
 
 def node_text(node: Node) -> str:
     return clean_whitespace(node.text(separator=" "))
+
+
+# Kart metninde fiyat bilgisi olduğunu gösteren işaretler.
+_PRICE_HINT_RE = re.compile(
+    r"(₺|\bTL\b|\bTRY\b|[üu]cretsiz|giri[şs]\s+serbest|bedava)", re.IGNORECASE
+)
+
+# Başlık adayı aranacak elemanlar, belirginlik sırasına göre.
+_TITLE_CANDIDATE_CSS = ("h1", "h2", "h3", "h4", "h5", ".title", "[class*='title']", ".name")
+
+
+def pick_title(node: Node, spec: str = "") -> str | None:
+    """Karttan en makul başlığı seçer.
+
+    Adaylar sırayla denenir ve *tarihten ibaret* olanlar atlanır: bazı
+    sayfalarda başlık seçicisi tutmadığında tarih elemanı başlık sanılıp
+    ``"29 Ağustos 2026"`` gibi sahte etkinlikler üretiliyordu.
+    """
+    candidates: list[str] = []
+    if spec:
+        value = select_value(node, spec)
+        if value:
+            candidates.append(value)
+    for css in _TITLE_CANDIDATE_CSS:
+        found = node.css_first(css)
+        if found:
+            candidates.append(node_text(found))
+    link = node.css_first("a")
+    if link:
+        candidates.append(node_text(link))
+        candidates.append(clean_whitespace(link.attributes.get("title") or ""))
+    image = node.css_first("img[alt]")
+    if image:
+        candidates.append(clean_whitespace(image.attributes.get("alt") or ""))
+
+    for candidate in candidates:
+        if candidate and len(candidate) >= 3 and not is_date_only(candidate):
+            return candidate
+    return None
+
+
+def price_from_card(node: Node, existing: str | None) -> str | None:
+    """Fiyat seçicisi tutmadıysa kart metninde fiyat izi arar.
+
+    Fiyat ayrıştırıcı tutarları yalnızca para birimine bitişikse okuduğu
+    için kart metnini vermek güvenli: tarihteki gün numarası fiyat sanılmaz.
+    """
+    if existing:
+        return existing
+    text = node_text(node)
+    if not _PRICE_HINT_RE.search(text):
+        return None
+    # Tarihleri at: yıl ve gün rakamları tutar ayrıştırmasını yanıltmasın.
+    return strip_date_expressions(text) or text
+
+
+# Kart metnini mantıklı parçalara bölen ayraçlar.
+_CHUNK_SPLIT_RE = re.compile(r"\s*[·•|/]\s*|\s*\n\s*|\s{2,}|\s+[-–—]\s+")
+
+
+def venue_from_card(node: Node, existing: str | None, title: str | None = None) -> str | None:
+    """Mekan seçicisi tutmadıysa kart metninde mekan adı arar.
+
+    Kartın alt elemanları tek tek gezilir (düz metinde satır yapısı
+    kaybolduğu için), her elemanın metni ayraçlara göre parçalanır ve
+    mekan sözcüğü ("Sahnesi", "Tiyatrosu", "Arena"…) içeren kısa bir parça
+    aranır. Tarih veya fiyat içeren parçalar elenir; böylece
+    ``"Konak Sahnesi · 400 TL"`` metninden yalnızca ``"Konak Sahnesi"`` alınır.
+    """
+    if existing:
+        return existing
+    normalized_title = clean_whitespace(title or "")
+
+    elements = node.css("span, div, p, small, li, strong, em, address, h5, h6")
+    # Küçük elemanlar önce: tüm kartı kapsayan kapsayıcılar yanıltmasın.
+    for element in sorted(elements, key=lambda n: len(node_text(n))):
+        text = node_text(element)
+        if not text or len(text) > 160:
+            continue
+        for chunk in _CHUNK_SPLIT_RE.split(text):
+            chunk = clean_whitespace(chunk).strip(",;:·-–—")
+            if not (4 <= len(chunk) <= 60) or chunk == normalized_title:
+                continue
+            if not VENUE_HINT_RE.search(chunk):
+                continue
+            if _PRICE_HINT_RE.search(chunk) or parse_dates(chunk) is not None:
+                continue
+            return chunk
+    return None
 
 
 # --- 1) JSON-LD --------------------------------------------------------------
@@ -453,12 +542,8 @@ def extract_selectors(html: str, base_url: str, source_key: str, selectors: Any)
     events: list[RawEvent] = []
     seen: set[str] = set()
     for node in nodes:
-        title = select_value(node, selectors.title) if selectors.title else None
+        title = pick_title(node, selectors.title or "")
         if not title:
-            # Başlık seçicisi tutmadıysa link metnine düş.
-            link = node.css_first("a")
-            title = clean_whitespace(link.text(separator=" ")) if link else ""
-        if not title or len(title) < 3:
             continue
         date_text = select_value(node, selectors.date) if selectors.date else None
         time_text = select_value(node, selectors.time) if selectors.time else None
@@ -479,8 +564,14 @@ def extract_selectors(html: str, base_url: str, source_key: str, selectors: Any)
                 url=absolutize(base_url, select_value(node, selectors.url)),
                 date_text=date_text,
                 time_text=time_text,
-                venue=select_value(node, selectors.venue) if selectors.venue else None,
-                price_text=select_value(node, selectors.price) if selectors.price else None,
+                venue=venue_from_card(
+                    node,
+                    select_value(node, selectors.venue) if selectors.venue else None,
+                    title,
+                ),
+                price_text=price_from_card(
+                    node, select_value(node, selectors.price) if selectors.price else None
+                ),
                 category_text=select_value(node, selectors.category)
                 if selectors.category
                 else None,
@@ -565,20 +656,8 @@ def extract_heuristic(
     seen: set[str] = set()
     for node in chosen:
         link = node.css_first("a[href]")
-        # Başlık adayı: en belirgin başlık etiketi, yoksa link metni, yoksa img alt
-        title = None
-        for css in ("h1", "h2", "h3", "h4", ".title", "[class*='title']"):
-            found = node.css_first(css)
-            if found:
-                title = clean_whitespace(found.text(separator=" "))
-                if title:
-                    break
-        if not title and link:
-            title = clean_whitespace(link.text(separator=" ")) or link.attributes.get("title")
+        title = pick_title(node)
         if not title:
-            img = node.css_first("img[alt]")
-            title = clean_whitespace(img.attributes.get("alt") or "") if img else None
-        if not title or len(title) < 3:
             continue
 
         text = node_text(node)
@@ -605,7 +684,8 @@ def extract_heuristic(
                 title=title,
                 url=absolutize(base_url, link.attributes.get("href") if link else None),
                 date_text=date_text[:200],
-                price_text=text if re.search(r"ücretsiz|ucretsiz|TL|₺", text, re.I) else None,
+                venue=venue_from_card(node, None, title),
+                price_text=price_from_card(node, None),
                 image=absolutize(
                     base_url,
                     (img.attributes.get("src") or img.attributes.get("data-src")) if img else None,
